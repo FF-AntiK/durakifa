@@ -1,0 +1,10 @@
+[package]
+name = "durakifa-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.8.1", default-features = false }
+durakifa-protocol = { path = "../durakifa-protocol" }
+naia-bevy-server = { git = "https://github.com/FF-AntiK/naia.git", branch = "ipv6" }
+obfstr = "0.4.1"

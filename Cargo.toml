@@ -1,0 +1,6 @@
+[workspace]
+
+# Important! wgpu/Bevy needs this!
+resolver = "2"
+
+members = ["durakifa-client", "durakifa-protocol", "durakifa-server"]
