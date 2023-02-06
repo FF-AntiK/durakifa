@@ -1,12 +1,12 @@
 use bevy::{
     math::Vec2,
-    prelude::{App, Plugin, Res, ResMut},
+    prelude::{App, Plugin, Res, ResMut, Resource},
     window::Windows,
 };
 
 pub const GRID_SZE: usize = 10;
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct Dimensions {
     pub block: f32,
     pub height: f32,

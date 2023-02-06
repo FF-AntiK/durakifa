@@ -4,11 +4,10 @@ use bevy::{
     input::Input,
     math::Vec2,
     prelude::{
-        App, Color, Commands, Component, Entity, EventReader, EventWriter, MouseButton,
-        ParallelSystemDescriptorCoercion, Plugin, Query, Res, SystemSet, Transform, With,
+        App, Color, Commands, Component, Entity, EventReader, EventWriter, IntoSystemDescriptor,
+        MouseButton, Plugin, Query, Res, SystemSet, Transform, Vec4, With,
     },
     sprite::{SpriteSheetBundle, TextureAtlasSprite},
-    ui::UiRect,
     window::Windows,
 };
 
@@ -1203,18 +1202,16 @@ fn input_mouse(
         let wnd = windows.get_primary().unwrap();
         if let Some(mut cursor) = wnd.cursor_position() {
             cursor -= 0.5 * Vec2::new(wnd.width(), wnd.height());
-            let contains = |p: Vec2, a: UiRect<f32>| {
-                p.x > a.left && p.x < a.right && p.y > a.bottom && p.y < a.top
-            };
+            let contains = |p: Vec2, a: Vec4| p.x > a.x && p.x < a.z && p.y > a.y && p.y < a.w;
 
             for (btn, tf) in query.iter() {
                 let offs = 0.5 * tf.scale;
-                let rect = UiRect {
-                    bottom: tf.translation.y - offs.y,
-                    left: tf.translation.x - offs.x,
-                    right: tf.translation.x + offs.x,
-                    top: tf.translation.y + offs.y,
-                };
+                let rect = Vec4::new(
+                    tf.translation.x - offs.x, // left
+                    tf.translation.y - offs.y, // bottom
+                    tf.translation.x + offs.x, // right
+                    tf.translation.y + offs.y, // top
+                );
 
                 if contains(cursor, rect) {
                     event_writer.send(*btn);
@@ -1237,7 +1234,7 @@ fn listen_buttons(
 
         for btn in l.iter() {
             commands
-                .spawn_bundle(SpriteSheetBundle {
+                .spawn(SpriteSheetBundle {
                     sprite: TextureAtlasSprite {
                         custom_size: Some(Vec2::ONE),
                         index: btn.index(),

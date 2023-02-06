@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy::prelude::Entity;
+use bevy_ecs::prelude::Entity;
 use durakifa_protocol::protocol::Protocol;
 use naia_bevy_server::{shared::DefaultChannels, RoomKey, Server, UserKey};
 
@@ -11,7 +11,7 @@ struct LobbyRoom {
 
 pub struct Lobby {
     lobby_key: RoomKey,
-    players: HashMap<UserKey, Entity>,
+    users: HashMap<UserKey, Entity>,
     rooms: HashMap<RoomKey, LobbyRoom>,
 }
 
@@ -19,7 +19,7 @@ impl Lobby {
     pub fn new(lobby_key: RoomKey) -> Self {
         Lobby {
             lobby_key,
-            players: HashMap::new(),
+            users: HashMap::new(),
             rooms: HashMap::new(),
         }
     }
@@ -28,20 +28,26 @@ impl Lobby {
         &mut self,
         server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
         user_key: UserKey,
-    ) {
+    ) -> Option<Entity> {
+        let mut res = None;
         for (room_key, room) in self.rooms.iter_mut() {
             if let Some(player) = room.players.remove(&user_key) {
                 server.entity_mut(&player).leave_room(room_key).despawn();
+                if let Some(&successor) = room.players.values().next() {
+                    res = Some(successor);
+                }
             }
         }
 
         self.tidy(server);
-        if let Some(player) = self.players.remove(&user_key) {
+        if let Some(user) = self.users.remove(&user_key) {
             server
-                .entity_mut(&player)
+                .entity_mut(&user)
                 .leave_room(&self.lobby_key)
                 .despawn();
         }
+
+        res
     }
 
     pub fn enter_room<'world, 'state>(
@@ -52,50 +58,42 @@ impl Lobby {
     ) -> Option<Entity> {
         for (room_key, lobby_room) in self.rooms.iter_mut() {
             if lobby_room.entity == room {
-                if let Some(player) = self.players.remove(&user_key) {
-                    lobby_room.players.insert(user_key, player);
-                    server
-                        .entity_mut(&player)
-                        .leave_room(&self.lobby_key)
-                        .enter_room(room_key);
-
-                    server
-                        .user_mut(&user_key)
-                        .leave_room(&self.lobby_key)
-                        .enter_room(room_key);
-
-                    return Some(player);
-                }
+                let player = server.spawn().enter_room(room_key).id();
+                lobby_room.players.insert(user_key, player);
+                server.user_mut(&user_key).enter_room(room_key);
+                return Some(player);
             }
         }
 
         None
     }
 
-    pub fn get_player(&self, user_key: UserKey) -> Option<Entity> {
-        if let Some(player) = self.players.get(&user_key) {
-            return Some(*player);
-        }
-
-        for (_, room) in self.rooms.iter() {
-            if let Some(player) = room.players.get(&user_key) {
-                return Some(*player);
-            }
+    pub fn get_user(&self, user_key: UserKey) -> Option<Entity> {
+        if let Some(&user) = self.users.get(&user_key) {
+            return Some(user);
         }
 
         None
     }
 
-    pub fn get_successor(&self, user_key: UserKey) -> Option<Entity> {
-        for (_, room) in self.rooms.iter() {
-            if room.players.get(&user_key).is_some() {
-                if let Some((_, player)) = room.players.iter().find(|(k, _)| **k != user_key) {
-                    return Some(*player);
+    pub fn leave_room<'world, 'state>(
+        &mut self,
+        server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
+        user_key: UserKey,
+    ) -> Option<Entity> {
+        let mut res = None;
+        for (room_key, room) in &mut self.rooms {
+            if let Some(player) = room.players.remove(&user_key) {
+                server.entity_mut(&player).despawn();
+                server.user_mut(&user_key).leave_room(&room_key);
+                if let Some(&successor) = room.players.values().next() {
+                    res = Some(successor);
                 }
             }
         }
 
-        None
+        self.tidy(server);
+        res
     }
 
     pub fn register<'world, 'state>(
@@ -103,10 +101,10 @@ impl Lobby {
         server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
         user_key: UserKey,
     ) -> Entity {
-        let player = server.spawn().enter_room(&self.lobby_key).id();
-        self.players.insert(user_key, player);
+        let user = server.spawn().enter_room(&self.lobby_key).id();
+        self.users.insert(user_key, user);
         server.user_mut(&user_key).enter_room(&self.lobby_key);
-        player
+        user
     }
 
     pub fn spawn_room<'world, 'state>(
@@ -114,28 +112,17 @@ impl Lobby {
         server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
         user_key: UserKey,
     ) -> (Entity, Entity) {
-        let player = self.players.remove(&user_key).unwrap();
         let room = server.spawn().enter_room(&self.lobby_key).id();
         let room_key = server.make_room().key();
         self.rooms.insert(
             room_key,
             LobbyRoom {
                 entity: room,
-                players: [(user_key, player)].iter().cloned().collect(),
+                players: HashMap::new(),
             },
         );
 
-        server
-            .entity_mut(&player)
-            .leave_room(&self.lobby_key)
-            .enter_room(&room_key);
-
-        server
-            .user_mut(&user_key)
-            .leave_room(&self.lobby_key)
-            .enter_room(&room_key);
-
-        (player, room)
+        (self.enter_room(room, server, user_key).unwrap(), room)
     }
 
     fn tidy<'world, 'state>(
@@ -154,31 +141,5 @@ impl Lobby {
 
             retain
         });
-    }
-
-    pub fn to_lobby<'world, 'state>(
-        &mut self,
-        server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
-        user_key: UserKey,
-    ) -> Option<Entity> {
-        let mut res = None;
-        for (room_key, room) in &mut self.rooms {
-            if let Some(player) = room.players.remove(&user_key) {
-                res = Some(player);
-                self.players.insert(user_key, player);
-                server
-                    .entity_mut(&player)
-                    .leave_room(&room_key)
-                    .enter_room(&self.lobby_key);
-
-                server
-                    .user_mut(&user_key)
-                    .leave_room(&room_key)
-                    .enter_room(&self.lobby_key);
-            }
-        }
-
-        self.tidy(server);
-        res
     }
 }

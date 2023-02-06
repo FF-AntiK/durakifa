@@ -5,7 +5,7 @@ use bevy::{
     math::Vec3,
     prelude::{
         default, App, Changed, Color, Commands, Component, DetectChanges, Entity, EventWriter,
-        MouseButton, Plugin, Query, Res, ResMut, SystemSet, Transform, With,
+        MouseButton, Plugin, Query, Res, ResMut, Resource, SystemSet, Transform, With,
     },
     sprite::{Sprite, SpriteBundle},
     text::{Text, Text2dBundle, TextAlignment, TextStyle},
@@ -42,7 +42,7 @@ struct ButtonLabel {
     text: String,
 }
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 struct Global {
     buttons: HashMap<Entity, (Entity, Entity)>,
 }
@@ -146,7 +146,7 @@ fn spawn_buttons(
             entity,
             (
                 commands
-                    .spawn_bundle(SpriteBundle::default())
+                    .spawn(SpriteBundle::default())
                     .insert(ButtonBounds {
                         button: entity,
                         color: btn.color_bg,
@@ -155,7 +155,7 @@ fn spawn_buttons(
                     .insert(MenuComponent)
                     .id(),
                 commands
-                    .spawn_bundle(Text2dBundle {
+                    .spawn(Text2dBundle {
                         text: Text::from_section(
                             "",
                             TextStyle {

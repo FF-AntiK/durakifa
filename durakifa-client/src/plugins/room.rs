@@ -40,8 +40,8 @@ impl Plugin for RoomPlugin {
                 SystemSet::on_update(AppState::Room)
                     .with_system(input)
                     .with_system(update_owner)
-                    .with_system(update_user_names)
-                    .with_system(update_users),
+                    .with_system(update_player_names)
+                    .with_system(update_players),
             );
     }
 }
@@ -73,21 +73,22 @@ fn input(
     }
 }
 
-fn setup(mut commands: Commands, images: Res<ImageAssets>) {
+fn setup(mut commands: Commands, dimensions: Res<Dimensions>, images: Res<ImageAssets>) {
     commands
-        .spawn_bundle(SpriteBundle {
+        .spawn(SpriteBundle {
             sprite: bevy::sprite::Sprite {
                 custom_size: Some(Vec2::ONE),
                 ..default()
             },
             texture: images.crown.clone(),
+            transform: Transform::from_scale(Vec2::splat(dimensions.block).extend(Vec3::ONE.z)),
             ..default()
         })
         .insert(Crown)
         .insert(RoomComponent);
 
     commands
-        .spawn()
+        .spawn_empty()
         .insert(BtnLeave)
         .insert(Button {
             color_bg: Color::MAROON,
@@ -98,7 +99,7 @@ fn setup(mut commands: Commands, images: Res<ImageAssets>) {
         .insert(RoomComponent);
 
     commands
-        .spawn()
+        .spawn_empty()
         .insert(BtnStart)
         .insert(Button {
             color_bg: Color::DARK_GREEN,
@@ -122,7 +123,7 @@ fn update_owner(
         }
     }
 
-    for btn in query.iter() {
+    if let Ok(btn) = query.get_single() {
         let translation = dimensions
             .translate(GRID_SZE - 1, btn.position)
             .extend(tf.translation.z)
@@ -134,17 +135,29 @@ fn update_owner(
     }
 }
 
-fn update_user_names(mut query: Query<(&mut Button, &Name), Changed<Name>>) {
-    for (mut btn, name) in query.iter_mut() {
-        btn.text = (*name.name).clone();
+fn update_player_names(
+    client: Client<Protocol, DefaultChannels>,
+    names: Query<(Entity, &Name), Changed<Name>>,
+    mut query: Query<(&mut Button, &Player)>,
+) {
+    for (entity, name) in names.iter() {
+        for (mut btn, player) in query.iter_mut() {
+            if let Some(user) = player.user.get(&client) {
+                if entity == user {
+                    btn.text = (*name.name).clone();
+                }
+            }
+        }
     }
 }
 
-fn update_users(
+fn update_players(
     mut buttons: Query<&mut Button>,
+    client: Client<Protocol, DefaultChannels>,
     mut commands: Commands,
+    names: Query<&Name>,
     mut players: Local<Vec<Entity>>,
-    query: Query<(Entity, &Name), (With<Player>, Without<Button>)>,
+    query: Query<(Entity, &Player), Without<Button>>,
 ) {
     let len = players.len();
     players.retain(|entity| buttons.contains(*entity));
@@ -154,14 +167,18 @@ fn update_users(
         }
     }
 
-    for (entity, name) in query.iter() {
-        commands.entity(entity).insert(Button {
-            color_bg: Color::MIDNIGHT_BLUE,
-            color_fg: Color::PINK,
-            position: players.len(),
-            text: (*name.name).clone(),
-        });
+    for (entity, player) in query.iter() {
+        if let Some(user) = player.user.get(&client) {
+            if let Ok(name) = names.get(user) {
+                commands.entity(entity).insert(Button {
+                    color_bg: Color::MIDNIGHT_BLUE,
+                    color_fg: Color::PINK,
+                    position: players.len(),
+                    text: (*name.name).clone(),
+                });
 
-        players.push(entity);
+                players.push(entity);
+            }
+        }
     }
 }

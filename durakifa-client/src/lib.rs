@@ -8,19 +8,21 @@ use bevy::{
         mouse::{MouseButtonInput, MouseMotion},
     },
     prelude::{
-        App, Assets, Camera2dBundle, ClearColor, Color, Commands, CoreStage, Entity, EventReader,
-        Handle, Image, ParallelSystemDescriptorCoercion, ResMut, State, SystemLabel, Vec2,
+        default, info, App, Assets, Camera2dBundle, ClearColor, Color, Commands, CoreStage, Entity,
+        EventReader, Handle, Image, ImagePlugin, IntoSystemDescriptor, PluginGroup, ResMut,
+        Resource, State, SystemLabel, Vec2,
     },
-    render::texture::ImageSettings,
     sprite::TextureAtlas,
     text::Font,
-    window::{WindowCloseRequested, WindowDescriptor, WindowMode, WindowResizeConstraints},
+    window::{
+        WindowCloseRequested, WindowDescriptor, WindowMode, WindowPlugin, WindowResizeConstraints,
+    },
     DefaultPlugins,
 };
 use bevy_asset_loader::prelude::{AssetCollection, LoadingState, LoadingStateAppExt};
 use durakifa_protocol::protocol::{Auth, Protocol};
 use naia_bevy_client::{
-    events::MessageEvent,
+    events::{DespawnEntityEvent, MessageEvent, SpawnEntityEvent},
     shared::{DefaultChannels, SharedConfig},
     Client, ClientConfig, Plugin as ClientPlugin, Stage,
 };
@@ -68,19 +70,19 @@ enum AppState {
     Room,
 }
 
-#[derive(AssetCollection)]
+#[derive(AssetCollection, Resource)]
 struct FontAssets {
     #[asset(path = "fonts/PressStart2P-vaV7.ttf")]
     regular: Handle<Font>,
 }
 
-#[derive(AssetCollection)]
+#[derive(AssetCollection, Resource)]
 struct ImageAssets {
     #[asset(path = "images/crown.png")]
     crown: Handle<Image>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, SystemLabel)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Resource, SystemLabel)]
 enum InputState {
     Keyboard,
     Mouse,
@@ -92,12 +94,12 @@ enum NetState {
     Online,
 }
 
-#[derive(Default)]
-struct LocalPlayer {
+#[derive(Default, Resource)]
+struct LocalUser {
     entity: Option<Entity>,
 }
 
-#[derive(AssetCollection)]
+#[derive(AssetCollection, Resource)]
 struct SpriteSheetAssets {
     #[asset(texture_atlas(tile_size_x = 32.0, tile_size_y = 32.0, columns = 10, rows = 17))]
     #[asset(path = "images/keys.png")]
@@ -144,7 +146,7 @@ fn input_mouse(
 }
 
 fn setup(mut client: Client<Protocol, DefaultChannels>, mut commands: Commands) {
-    commands.spawn_bundle(Camera2dBundle::default());
+    commands.spawn(Camera2dBundle::default());
 
     client.auth(Auth::new(obfstr!(SRV_KEY).to_string()));
     client.connect(&format!("{}://{}:{}", SRV_PROT, SRV_ADDR, SRV_PORT));
@@ -154,21 +156,8 @@ fn setup(mut client: Client<Protocol, DefaultChannels>, mut commands: Commands) 
 pub fn start() {
     App::new()
         .insert_resource(ClearColor(WND_CLR))
-        .insert_resource(ImageSettings::default_nearest())
         .insert_resource(InputState::Mouse)
-        .insert_resource(LocalPlayer::default())
-        .insert_resource(WindowDescriptor {
-            height: WND_SZE_Y,
-            mode: WindowMode::Windowed,
-            resize_constraints: WindowResizeConstraints {
-                min_height: WND_SZE_MIN_Y,
-                min_width: WND_SZE_MIN_X,
-                ..Default::default()
-            },
-            title: WND_TTL.to_string(),
-            width: WND_SZE_X,
-            ..Default::default()
-        })
+        .insert_resource(LocalUser::default())
         .add_loading_state(
             LoadingState::new(AppState::Load)
                 .continue_to_state(AppState::Connect)
@@ -176,7 +165,25 @@ pub fn start() {
                 .with_collection::<ImageAssets>()
                 .with_collection::<SpriteSheetAssets>(),
         )
-        .add_plugins(DefaultPlugins)
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    window: WindowDescriptor {
+                        height: WND_SZE_Y,
+                        mode: WindowMode::Windowed,
+                        resize_constraints: WindowResizeConstraints {
+                            min_height: WND_SZE_MIN_Y,
+                            min_width: WND_SZE_MIN_X,
+                            ..Default::default()
+                        },
+                        title: WND_TTL.to_string(),
+                        width: WND_SZE_X,
+                        ..Default::default()
+                    },
+                    ..default()
+                }),
+        )
         .add_plugin(ClientPlugin::<Protocol, DefaultChannels>::new(
             ClientConfig::default(),
             SharedConfig::default(),
@@ -197,6 +204,8 @@ pub fn start() {
         .add_system_to_stage(CoreStage::PostUpdate, cleanup)
         .add_system_to_stage(Stage::Connection, connect)
         .add_system_to_stage(Stage::Disconnection, disconnect)
+        .add_system_to_stage(Stage::ReceiveEvents, debug_despawn)
+        .add_system_to_stage(Stage::ReceiveEvents, debug_spawn)
         .add_system_to_stage(Stage::ReceiveEvents, update_local_player)
         .run();
 }
@@ -204,11 +213,24 @@ pub fn start() {
 fn update_local_player(
     client: Client<Protocol, DefaultChannels>,
     mut event_reader: EventReader<MessageEvent<Protocol, DefaultChannels>>,
-    mut local_player: ResMut<LocalPlayer>,
+    mut local_user: ResMut<LocalUser>,
 ) {
     for event in event_reader.iter() {
         if let MessageEvent(_, Protocol::Own(msg)) = event {
-            local_player.entity = msg.player.get(&client);
+            local_user.entity = msg.user.get(&client);
+            info!("local user: {:?}", local_user.entity);
         }
+    }
+}
+
+fn debug_despawn(mut event_reader: EventReader<DespawnEntityEvent>) {
+    for event in event_reader.iter() {
+        info!("despawned {:?}", event.0);
+    }
+}
+
+fn debug_spawn(mut event_reader: EventReader<SpawnEntityEvent>) {
+    for event in event_reader.iter() {
+        info!("spawned {:?}", event.0);
     }
 }

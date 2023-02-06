@@ -8,7 +8,7 @@ use bevy::{
     },
     sprite::SpriteBundle,
     text::{Text, Text2dBundle, TextAlignment, TextStyle},
-    time::Time,
+    time::{Time, TimerMode},
 };
 
 use crate::{AppState, NetState};
@@ -77,7 +77,7 @@ fn connect(mut app_state: ResMut<State<AppState>>, net_state: Res<State<NetState
 
 fn setup(mut commands: Commands, assets: Res<AssetServer>) {
     commands
-        .spawn_bundle(SpriteBundle {
+        .spawn(SpriteBundle {
             sprite: bevy::sprite::Sprite {
                 custom_size: Some(Vec2::ONE),
                 ..Default::default()
@@ -89,7 +89,7 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
         .insert(Rotation::default());
 
     commands
-        .spawn_bundle(Text2dBundle {
+        .spawn(Text2dBundle {
             text: Text::from_section(
                 LOADTXT,
                 TextStyle {
@@ -104,7 +104,7 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
         .insert(LoadComponent)
         .insert(Marquee {
             step: 0,
-            timer: Timer::from_seconds(MARQUEE_SPEED, true),
+            timer: Timer::from_seconds(MARQUEE_SPEED, TimerMode::Repeating),
         });
 }
 

@@ -5,7 +5,7 @@ use bevy::prelude::{
 use durakifa_protocol::protocol::{Add, Join, Name, Protocol, Room};
 use naia_bevy_client::{shared::DefaultChannels, Client};
 
-use crate::{AppState, LocalPlayer};
+use crate::{AppState, LocalUser};
 
 use super::{
     dimensions::GRID_SZE,
@@ -46,14 +46,13 @@ fn input(
     btn_room: Query<&Button>,
     mut client: Client<Protocol, DefaultChannels>,
     mut event_reader: EventReader<ButtonEvent>,
-    player: Res<LocalPlayer>,
+    player: Res<LocalUser>,
     names: Query<&Name>,
 ) {
     for event in event_reader.iter() {
         if btn_new.get(event.entity).is_ok() {
             if let Some(local_player) = player.entity {
                 app_state.set(AppState::Room).unwrap();
-                //TODO: local_player is invalid if the player switched rooms.
                 client.send_message(
                     DefaultChannels::UnorderedReliable,
                     &Add::new((*names.get(local_player).unwrap().name).clone()),
@@ -75,7 +74,7 @@ fn input(
 
 fn setup(mut commands: Commands) {
     commands
-        .spawn()
+        .spawn_empty()
         .insert(BtnNewRoom)
         .insert(Button {
             color_bg: Color::DARK_GRAY,

@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy_ecs = "0.8.1"
+bevy_ecs = "0.9.1"
 deckofcards = "0.4.0"
-naia-shared = { git = "https://github.com/FF-AntiK/naia.git", branch = "ipv6" }
+naia-shared = "0.15.0"

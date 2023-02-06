@@ -2,7 +2,7 @@ use bevy::{
     input::Input,
     prelude::{
         default, App, Color, Commands, Component, Entity, EventReader, KeyCode, Plugin, Query, Res,
-        ResMut, State, SystemSet, Transform, With,
+        ResMut, Resource, State, SystemSet, Transform, With,
     },
     text::{Text, Text2dBundle, TextAlignment, TextStyle},
     window::ReceivedCharacter,
@@ -23,7 +23,7 @@ const PROMPT: &str = "Enter your Agent ID:";
 #[derive(Component)]
 struct Name;
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 struct PlayerLocal {
     pub name: String,
 }
@@ -124,7 +124,7 @@ fn input_vkeyboard(
 
 fn setup(mut commands: Commands, fonts: Res<FontAssets>) {
     commands
-        .spawn_bundle(Text2dBundle {
+        .spawn(Text2dBundle {
             text: Text::from_section(
                 "",
                 TextStyle {
@@ -140,7 +140,7 @@ fn setup(mut commands: Commands, fonts: Res<FontAssets>) {
         .insert(RegisterComponent);
 
     commands
-        .spawn_bundle(Text2dBundle {
+        .spawn(Text2dBundle {
             text: Text::from_section(
                 PROMPT,
                 TextStyle {

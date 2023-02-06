@@ -1,14 +1,15 @@
 mod logic;
 
-use bevy::{
-    log::LogPlugin,
-    prelude::{
-        info, App, Commands, Entity, EventReader, ParallelSystemDescriptorCoercion, Query, ResMut,
-        With, Without,
-    },
-    MinimalPlugins,
+use bevy_app::{App, ScheduleRunnerPlugin};
+use bevy_core::CorePlugin;
+use bevy_ecs::{
+    prelude::{Entity, EventReader},
+    query::{With, Without},
+    schedule::IntoSystemDescriptor,
+    system::{Commands, Query, ResMut, Resource},
 };
-use durakifa_protocol::protocol::{Name, Own, Owner, Player, Protocol, Room};
+use bevy_log::{info, LogPlugin};
+use durakifa_protocol::protocol::{Name, Own, Owner, Player, Protocol, Room, User};
 use logic::lobby::Lobby;
 use naia_bevy_server::{
     events::{AuthorizationEvent, DisconnectionEvent, MessageEvent},
@@ -36,6 +37,7 @@ const SRV_KEY: &str = env!("SRV_KEY");
 #[cfg(debug_assertions)]
 const SRV_KEY: &str = "SRV_KEY";
 
+#[derive(Resource)]
 struct Global {
     lobby: Lobby,
 }
@@ -56,10 +58,12 @@ fn authorize(
 }
 
 fn debug<'world, 'state>(
-    players: Query<(Entity, &Name), With<Player>>,
-    others: Query<Entity, (Without<Player>, Without<Room>)>,
+    others: Query<Entity, (Without<Player>, Without<Room>, Without<User>)>,
+    owners: Query<&Owner>,
+    players: Query<(Entity, &Player)>,
     rooms: Query<(Entity, &Name), With<Room>>,
     server: Server<'world, 'state, Protocol, DefaultChannels>,
+    users: Query<(Entity, &Name), With<User>>,
 ) {
     for (i, room_key) in server.room_keys().iter().enumerate() {
         info!(
@@ -69,21 +73,33 @@ fn debug<'world, 'state>(
             server.room(&room_key).users_count(),
         );
 
-        for (entity, player) in players.iter() {
-            if server.room(&room_key).has_entity(&entity) {
-                info!("  player: {}", (*player.name).clone());
-            }
-        }
-
         for entity in others.iter() {
             if server.room(&room_key).has_entity(&entity) {
                 info!("  other");
             }
         }
 
+        for (entity, player) in players.iter() {
+            if server.room(&room_key).has_entity(&entity) {
+                let user_entity = player.user.get(&server).unwrap();
+                let (_, user) = users.get(user_entity).unwrap();
+                if owners.get(entity).is_ok() {
+                    info!("  player: {} (owner)", *user.name);
+                } else {
+                    info!("  player: {}", *user.name);
+                }
+            }
+        }
+
         for (entity, room) in rooms.iter() {
             if server.room(&room_key).has_entity(&entity) {
-                info!("  room: {}", (*room.name).clone());
+                info!("  room: {}", *room.name);
+            }
+        }
+
+        for (entity, user) in users.iter() {
+            if server.room(&room_key).has_entity(&entity) {
+                info!("  user: {}", *user.name);
             }
         }
     }
@@ -92,20 +108,13 @@ fn debug<'world, 'state>(
 fn disconnect<'world, 'state>(
     mut event_reader: EventReader<DisconnectionEvent>,
     mut global: ResMut<Global>,
-    query: Query<&Owner>,
     mut server: Server<'world, 'state, Protocol, DefaultChannels>,
 ) {
     for event in event_reader.iter() {
         let DisconnectionEvent(user_key, _) = event;
-        if let Some(player) = global.lobby.get_player(*user_key) {
-            if query.get(player).is_ok() {
-                if let Some(entity) = global.lobby.get_successor(*user_key) {
-                    server.entity_mut(&entity).insert(Owner::new());
-                }
-            }
+        if let Some(successor) = global.lobby.clear_user(&mut server, *user_key) {
+            server.entity_mut(&successor).insert(Owner::new());
         }
-
-        global.lobby.clear_user(&mut server, *user_key);
     }
 }
 
@@ -117,15 +126,13 @@ fn enter_room<'world, 'state>(
     let global = &mut *global;
     for event in events.iter() {
         if let MessageEvent(user_key, _, Protocol::Join(msg)) = event {
-            if let Some(room) = msg.room.get(&server) {
-                if let Some(_player) = global.lobby.enter_room(room, &mut server, *user_key) {
-                    //TODO: this would be too early, because client hasn't synced
-                    //      entities yet
-                    /*
-                        let mut own = Own::new();
-                        own.player.set(&server, &player);
-                        server.send_message(user_key, DefaultChannels::UnorderedReliable, &own);
-                    */
+            if let Some(user) = global.lobby.get_user(*user_key) {
+                if let Some(room) = msg.room.get(&server) {
+                    if let Some(entity) = global.lobby.enter_room(room, &mut server, *user_key) {
+                        let mut player = Player::new();
+                        player.user.set(&server, &user);
+                        server.entity_mut(&entity).insert(player);
+                    }
                 }
             }
         }
@@ -140,16 +147,8 @@ fn leave_room<'world, 'state>(
     let global = &mut *global;
     for event in events.iter() {
         if let MessageEvent(user_key, _, Protocol::Leave(_)) = event {
-            if let Some(player) = global.lobby.to_lobby(&mut server, *user_key) {
-                server.entity_mut(&player).remove::<Owner>();
-
-                //TODO: this would be too early, because client hasn't synced
-                //      entities yet
-                /*
-                    let mut own = Own::new();
-                    own.player.set(&server, &player);
-                    server.send_message(user_key, DefaultChannels::UnorderedReliable, &own);
-                */
+            if let Some(successor) = global.lobby.leave_room(&mut server, *user_key) {
+                server.entity_mut(&successor).insert(Owner::new());
             }
         }
     }
@@ -157,8 +156,9 @@ fn leave_room<'world, 'state>(
 
 fn main() {
     App::new()
-        .add_plugins(MinimalPlugins)
-        .add_plugin(LogPlugin)
+        .add_plugin(CorePlugin::default())
+        .add_plugin(ScheduleRunnerPlugin::default())
+        .add_plugin(LogPlugin::default())
         .add_plugin(ServerPlugin::<Protocol, DefaultChannels>::new(
             ServerConfig::default(),
             SharedConfig::default(),
@@ -183,16 +183,14 @@ fn register<'world, 'state>(
 ) {
     for event in events.iter() {
         if let MessageEvent(user_key, _, Protocol::Register(msg)) = event {
-            let player = &global.lobby.register(&mut server, *user_key);
+            let user = &global.lobby.register(&mut server, *user_key);
             server
-                .entity_mut(player)
+                .entity_mut(user)
                 .insert(Name::new((*msg.name).clone()))
-                .insert(Player::new());
+                .insert(User::new());
 
-            //TODO: this should be the only place where sending the Own message
-            //      is neccessary
             let mut own = Own::new();
-            own.player.set(&server, player);
+            own.user.set(&server, user);
             server.send_message(user_key, DefaultChannels::UnorderedReliable, &own);
         }
     }
@@ -217,20 +215,21 @@ fn spawn_room<'world, 'state>(
 ) {
     for event in events.iter() {
         if let MessageEvent(user_key, _, Protocol::Add(msg)) = event {
-            let (player, room) = global.lobby.spawn_room(&mut server, *user_key);
-            server.entity_mut(&player).insert(Owner::new());
-            server
-                .entity_mut(&room)
-                .insert(Name::new((*msg.name).clone()))
-                .insert(Room::new());
+            if let Some(user_entity) = global.lobby.get_user(*user_key) {
+                let (player_entity, room_entity) = global.lobby.spawn_room(&mut server, *user_key);
+                let mut player = Player::new();
+                player.user.set(&server, &user_entity);
 
-            //TODO: this would be too early, because client hasn't synced
-            //      entities yet
-            /*
-                let mut own = Own::new();
-                own.player.set(&server, &player);
-                server.send_message(user_key, DefaultChannels::UnorderedReliable, &own);
-            */
+                server
+                    .entity_mut(&player_entity)
+                    .insert(player)
+                    .insert(Owner::new());
+
+                server
+                    .entity_mut(&room_entity)
+                    .insert(Name::new((*msg.name).clone()))
+                    .insert(Room::new());
+            }
         }
     }
 }

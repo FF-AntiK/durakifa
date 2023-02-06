@@ -1,9 +1,9 @@
 use bevy::{
-    prelude::{App, Plugin, Res, ResMut},
+    prelude::{App, Plugin, Res, ResMut, Resource},
     window::Windows,
 };
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct Mouse {
     pub x: f32,
     pub y: f32,
