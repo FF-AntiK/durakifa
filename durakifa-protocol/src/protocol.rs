@@ -3,21 +3,24 @@ mod messages;
 
 pub use self::{
     components::{name::Name, owner::Owner, player::Player, room::Room, user::User},
-    messages::{add::Add, auth::Auth, join::Join, leave::Leave, own::Own, register::Register},
+    messages::lobby::{
+        authorize::Authorize, create_room::CreateRoom, join_room::JoinRoom, leave_room::LeaveRoom,
+        own_user::OwnUser, register_user::RegisterUser,
+    },
 };
 use naia_shared::Protocolize;
 
 #[derive(Protocolize)]
 pub enum Protocol {
-    Add(Add),
-    Auth(Auth),
-    Join(Join),
-    Leave(Leave),
+    Authorize(Authorize),
+    CreateRoom(CreateRoom),
+    JoinRoom(JoinRoom),
+    LeaveRoom(LeaveRoom),
     Name(Name),
-    Own(Own),
+    OwnUser(OwnUser),
     Owner(Owner),
     Player(Player),
-    Register(Register),
+    RegisterUser(RegisterUser),
     Room(Room),
     User(User),
 }

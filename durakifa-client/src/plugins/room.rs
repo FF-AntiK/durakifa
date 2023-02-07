@@ -6,7 +6,7 @@ use bevy::{
     },
     sprite::SpriteBundle,
 };
-use durakifa_protocol::protocol::{Leave, Name, Owner, Player, Protocol};
+use durakifa_protocol::protocol::{LeaveRoom, Name, Owner, Player, Protocol};
 use naia_bevy_client::{shared::DefaultChannels, Client};
 
 use crate::{AppState, ImageAssets};
@@ -62,7 +62,7 @@ fn input(
     for event in event_reader.iter() {
         if btn_leave.get(event.entity).is_ok() {
             app_state.set(AppState::Lobby).unwrap();
-            client.send_message(DefaultChannels::UnorderedReliable, &Leave::new());
+            client.send_message(DefaultChannels::UnorderedReliable, &LeaveRoom::new());
             return;
         }
 

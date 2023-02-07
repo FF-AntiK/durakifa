@@ -3,12 +3,12 @@ use naia_shared::{Property, Replicate};
 
 #[derive(Component, Replicate)]
 #[protocol_path = "crate::protocol::Protocol"]
-pub struct Auth {
-    pub key: Property<String>,
+pub struct RegisterUser {
+    pub name: Property<String>,
 }
 
-impl Auth {
-    pub fn new(key: String) -> Self {
-        Auth::new_complete(key)
+impl RegisterUser {
+    pub fn new(name: String) -> Self {
+        RegisterUser::new_complete(name)
     }
 }

@@ -1,14 +1,12 @@
 use bevy_ecs::prelude::Component;
-use naia_shared::{EntityProperty, Replicate};
+use naia_shared::Replicate;
 
 #[derive(Component, Replicate)]
 #[protocol_path = "crate::protocol::Protocol"]
-pub struct Join {
-    pub room: EntityProperty,
-}
+pub struct LeaveRoom;
 
-impl Join {
+impl LeaveRoom {
     pub fn new() -> Self {
-        Join::new_complete()
+        LeaveRoom::new_complete()
     }
 }

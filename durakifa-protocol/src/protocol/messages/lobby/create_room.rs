@@ -1,14 +1,12 @@
 use bevy_ecs::prelude::Component;
-use naia_shared::{EntityProperty, Replicate};
+use naia_shared::Replicate;
 
 #[derive(Component, Replicate)]
 #[protocol_path = "crate::protocol::Protocol"]
-pub struct Own {
-    pub user: EntityProperty,
-}
+pub struct CreateRoom;
 
-impl Own {
+impl CreateRoom {
     pub fn new() -> Self {
-        Own::new_complete()
+        CreateRoom::new_complete()
     }
 }

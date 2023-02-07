@@ -20,7 +20,7 @@ use bevy::{
     DefaultPlugins,
 };
 use bevy_asset_loader::prelude::{AssetCollection, LoadingState, LoadingStateAppExt};
-use durakifa_protocol::protocol::{Auth, Protocol};
+use durakifa_protocol::protocol::{Authorize, Protocol};
 use naia_bevy_client::{
     events::{DespawnEntityEvent, MessageEvent, SpawnEntityEvent},
     shared::{DefaultChannels, SharedConfig},
@@ -148,7 +148,7 @@ fn input_mouse(
 fn setup(mut client: Client<Protocol, DefaultChannels>, mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 
-    client.auth(Auth::new(obfstr!(SRV_KEY).to_string()));
+    client.auth(Authorize::new(obfstr!(SRV_KEY).to_string()));
     client.connect(&format!("{}://{}:{}", SRV_PROT, SRV_ADDR, SRV_PORT));
 }
 
@@ -216,7 +216,7 @@ fn update_local_player(
     mut local_user: ResMut<LocalUser>,
 ) {
     for event in event_reader.iter() {
-        if let MessageEvent(_, Protocol::Own(msg)) = event {
+        if let MessageEvent(_, Protocol::OwnUser(msg)) = event {
             local_user.entity = msg.user.get(&client);
             info!("local user: {:?}", local_user.entity);
         }

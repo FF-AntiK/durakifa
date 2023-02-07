@@ -28,13 +28,13 @@ impl Lobby {
         &mut self,
         server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
         user_key: UserKey,
-    ) -> Option<Entity> {
+    ) -> Option<(Entity, Entity)> {
         let mut res = None;
         for (room_key, room) in self.rooms.iter_mut() {
             if let Some(player) = room.players.remove(&user_key) {
                 server.entity_mut(&player).leave_room(room_key).despawn();
                 if let Some(&successor) = room.players.values().next() {
-                    res = Some(successor);
+                    res = Some((room.entity, successor));
                 }
             }
         }
@@ -80,14 +80,14 @@ impl Lobby {
         &mut self,
         server: &mut Server<'world, 'state, Protocol, DefaultChannels>,
         user_key: UserKey,
-    ) -> Option<Entity> {
+    ) -> Option<(Entity, Entity)> {
         let mut res = None;
         for (room_key, room) in &mut self.rooms {
             if let Some(player) = room.players.remove(&user_key) {
                 server.entity_mut(&player).despawn();
                 server.user_mut(&user_key).leave_room(&room_key);
                 if let Some(&successor) = room.players.values().next() {
-                    res = Some(successor);
+                    res = Some((room.entity, successor));
                 }
             }
         }

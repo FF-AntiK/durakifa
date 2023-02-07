@@ -9,7 +9,7 @@ use bevy_ecs::{
     system::{Commands, Query, ResMut, Resource},
 };
 use bevy_log::{info, LogPlugin};
-use durakifa_protocol::protocol::{Name, Own, Owner, Player, Protocol, Room, User};
+use durakifa_protocol::protocol::{Name, OwnUser, Owner, Player, Protocol, Room, User};
 use logic::lobby::Lobby;
 use naia_bevy_server::{
     events::{AuthorizationEvent, DisconnectionEvent, MessageEvent},
@@ -47,7 +47,7 @@ fn authorize(
     mut server: Server<Protocol, DefaultChannels>,
 ) {
     for event in event_reader.iter() {
-        if let AuthorizationEvent(user_key, Protocol::Auth(msg)) = event {
+        if let AuthorizationEvent(user_key, Protocol::Authorize(msg)) = event {
             if &*msg.key == obfstr!(SRV_KEY) {
                 server.accept_connection(&user_key);
             } else {
@@ -106,26 +106,38 @@ fn debug<'world, 'state>(
 }
 
 fn disconnect<'world, 'state>(
-    mut event_reader: EventReader<DisconnectionEvent>,
+    mut events: EventReader<DisconnectionEvent>,
     mut global: ResMut<Global>,
+    players: Query<&Player>,
+    mut room_names: Query<&mut Name, (With<Room>, Without<User>)>,
     mut server: Server<'world, 'state, Protocol, DefaultChannels>,
+    user_names: Query<&Name, (With<User>, Without<Room>)>,
 ) {
-    for event in event_reader.iter() {
+    for event in events.iter() {
         let DisconnectionEvent(user_key, _) = event;
-        if let Some(successor) = global.lobby.clear_user(&mut server, *user_key) {
+        if let Some((room, successor)) = global.lobby.clear_user(&mut server, *user_key) {
             server.entity_mut(&successor).insert(Owner::new());
+            if let Ok(player) = players.get(successor) {
+                if let Ok(mut room_name) = room_names.get_mut(room) {
+                    if let Some(user) = player.user.get(&server) {
+                        if let Ok(user_name) = user_names.get(user) {
+                            *room_name.name = (*user_name.name).clone();
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 fn enter_room<'world, 'state>(
-    mut global: ResMut<Global>,
     mut events: EventReader<MessageEvent<Protocol, DefaultChannels>>,
+    mut global: ResMut<Global>,
     mut server: Server<'world, 'state, Protocol, DefaultChannels>,
 ) {
     let global = &mut *global;
     for event in events.iter() {
-        if let MessageEvent(user_key, _, Protocol::Join(msg)) = event {
+        if let MessageEvent(user_key, _, Protocol::JoinRoom(msg)) = event {
             if let Some(user) = global.lobby.get_user(*user_key) {
                 if let Some(room) = msg.room.get(&server) {
                     if let Some(entity) = global.lobby.enter_room(room, &mut server, *user_key) {
@@ -140,15 +152,27 @@ fn enter_room<'world, 'state>(
 }
 
 fn leave_room<'world, 'state>(
-    mut global: ResMut<Global>,
     mut events: EventReader<MessageEvent<Protocol, DefaultChannels>>,
+    mut global: ResMut<Global>,
+    players: Query<&Player>,
+    mut room_names: Query<&mut Name, (With<Room>, Without<User>)>,
     mut server: Server<'world, 'state, Protocol, DefaultChannels>,
+    user_names: Query<&Name, (With<User>, Without<Room>)>,
 ) {
     let global = &mut *global;
     for event in events.iter() {
-        if let MessageEvent(user_key, _, Protocol::Leave(_)) = event {
-            if let Some(successor) = global.lobby.leave_room(&mut server, *user_key) {
+        if let MessageEvent(user_key, _, Protocol::LeaveRoom(_)) = event {
+            if let Some((room, successor)) = global.lobby.leave_room(&mut server, *user_key) {
                 server.entity_mut(&successor).insert(Owner::new());
+                if let Ok(player) = players.get(successor) {
+                    if let Ok(mut room_name) = room_names.get_mut(room) {
+                        if let Some(user) = player.user.get(&server) {
+                            if let Ok(user_name) = user_names.get(user) {
+                                *room_name.name = (*user_name.name).clone();
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -182,14 +206,14 @@ fn register<'world, 'state>(
     mut server: Server<'world, 'state, Protocol, DefaultChannels>,
 ) {
     for event in events.iter() {
-        if let MessageEvent(user_key, _, Protocol::Register(msg)) = event {
+        if let MessageEvent(user_key, _, Protocol::RegisterUser(msg)) = event {
             let user = &global.lobby.register(&mut server, *user_key);
             server
                 .entity_mut(user)
                 .insert(Name::new((*msg.name).clone()))
                 .insert(User::new());
 
-            let mut own = Own::new();
+            let mut own = OwnUser::new();
             own.user.set(&server, user);
             server.send_message(user_key, DefaultChannels::UnorderedReliable, &own);
         }
@@ -211,10 +235,11 @@ fn setup(mut commands: Commands, mut server: Server<Protocol, DefaultChannels>) 
 fn spawn_room<'world, 'state>(
     mut global: ResMut<Global>,
     mut events: EventReader<MessageEvent<Protocol, DefaultChannels>>,
+    names: Query<&Name>,
     mut server: Server<'world, 'state, Protocol, DefaultChannels>,
 ) {
     for event in events.iter() {
-        if let MessageEvent(user_key, _, Protocol::Add(msg)) = event {
+        if let MessageEvent(user_key, _, Protocol::CreateRoom(_)) = event {
             if let Some(user_entity) = global.lobby.get_user(*user_key) {
                 let (player_entity, room_entity) = global.lobby.spawn_room(&mut server, *user_key);
                 let mut player = Player::new();
@@ -227,7 +252,7 @@ fn spawn_room<'world, 'state>(
 
                 server
                     .entity_mut(&room_entity)
-                    .insert(Name::new((*msg.name).clone()))
+                    .insert(names.get(user_entity).unwrap().clone())
                     .insert(Room::new());
             }
         }

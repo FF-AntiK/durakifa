@@ -7,7 +7,7 @@ use bevy::{
     text::{Text, Text2dBundle, TextAlignment, TextStyle},
     window::ReceivedCharacter,
 };
-use durakifa_protocol::protocol::{Protocol, Register};
+use durakifa_protocol::protocol::{Protocol, RegisterUser};
 use naia_bevy_client::{shared::DefaultChannels, Client};
 
 use crate::{AppState, FontAssets, InputState};
@@ -84,7 +84,7 @@ fn input_keyboard(
         app_state.set(AppState::Lobby).unwrap();
         client.send_message(
             DefaultChannels::UnorderedReliable,
-            &Register::new(player.name.clone()),
+            &RegisterUser::new(player.name.clone()),
         );
 
         return;
@@ -114,7 +114,7 @@ fn input_vkeyboard(
                 app_state.set(AppState::Lobby).unwrap();
                 client.send_message(
                     DefaultChannels::UnorderedReliable,
-                    &Register::new(player.name.clone()),
+                    &RegisterUser::new(player.name.clone()),
                 );
             }
             _ => player.name.push_str(btn.to_string().as_str()),

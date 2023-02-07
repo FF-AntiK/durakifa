@@ -1,11 +1,11 @@
 use bevy::prelude::{
-    App, Changed, Color, Commands, Component, Entity, EventReader, Local, Plugin, Query, Res,
-    ResMut, State, SystemSet, With, Without,
+    App, Changed, Color, Commands, Component, Entity, EventReader, Local, Plugin, Query, ResMut,
+    State, SystemSet, With, Without,
 };
-use durakifa_protocol::protocol::{Add, Join, Name, Protocol, Room};
+use durakifa_protocol::protocol::{CreateRoom, JoinRoom, Name, Protocol, Room};
 use naia_bevy_client::{shared::DefaultChannels, Client};
 
-use crate::{AppState, LocalUser};
+use crate::AppState;
 
 use super::{
     dimensions::GRID_SZE,
@@ -46,25 +46,17 @@ fn input(
     btn_room: Query<&Button>,
     mut client: Client<Protocol, DefaultChannels>,
     mut event_reader: EventReader<ButtonEvent>,
-    player: Res<LocalUser>,
-    names: Query<&Name>,
 ) {
     for event in event_reader.iter() {
         if btn_new.get(event.entity).is_ok() {
-            if let Some(local_player) = player.entity {
-                app_state.set(AppState::Room).unwrap();
-                client.send_message(
-                    DefaultChannels::UnorderedReliable,
-                    &Add::new((*names.get(local_player).unwrap().name).clone()),
-                );
-            }
-
+            app_state.set(AppState::Room).unwrap();
+            client.send_message(DefaultChannels::UnorderedReliable, &CreateRoom::new());
             return;
         }
 
         if btn_room.get(event.entity).is_ok() {
             app_state.set(AppState::Room).unwrap();
-            let mut join = Join::new();
+            let mut join = JoinRoom::new();
             join.room.set(&client, &event.entity);
             client.send_message(DefaultChannels::UnorderedReliable, &join);
             return;

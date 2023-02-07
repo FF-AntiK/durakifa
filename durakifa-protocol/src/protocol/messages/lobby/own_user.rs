@@ -1,12 +1,14 @@
 use bevy_ecs::prelude::Component;
-use naia_shared::Replicate;
+use naia_shared::{EntityProperty, Replicate};
 
 #[derive(Component, Replicate)]
 #[protocol_path = "crate::protocol::Protocol"]
-pub struct Leave;
+pub struct OwnUser {
+    pub user: EntityProperty,
+}
 
-impl Leave {
+impl OwnUser {
     pub fn new() -> Self {
-        Leave::new_complete()
+        OwnUser::new_complete()
     }
 }
